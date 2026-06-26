@@ -23,8 +23,14 @@ public class UrlMappingService {
 
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
+    private UrlSecurityService urlSecurityService;
+    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
-    public UrlMappingDTO createShortUrl(String originalUrl, String customSlug, LocalDateTime expirationDate, Integer clickLimit, User user){
+    public UrlMappingDTO createShortUrl(String originalUrl, String customSlug, LocalDateTime expirationDate, Integer clickLimit, String password, boolean oneTime, User user){
+        if (!urlSecurityService.isSafeUrl(originalUrl)) {
+            throw new IllegalArgumentException("The target URL has been flagged as suspicious or malicious");
+        }
+
         String shortUrl;
         if (customSlug != null && !customSlug.trim().isEmpty()) {
             customSlug = customSlug.trim();
@@ -46,6 +52,10 @@ public class UrlMappingService {
         urlMapping.setCreatedDate(LocalDateTime.now());
         urlMapping.setExpirationDate(expirationDate);
         urlMapping.setClickLimit(clickLimit);
+        urlMapping.setOneTime(oneTime);
+        if (password != null && !password.trim().isEmpty()) {
+            urlMapping.setPassword(passwordEncoder.encode(password.trim()));
+        }
 
         UrlMapping savedUrlMapping = urlMappingRepository.save(urlMapping);
 
@@ -62,6 +72,8 @@ public class UrlMappingService {
         urlMappingDTO.setCreatedDate(urlMapping.getCreatedDate());
         urlMappingDTO.setExpirationDate(urlMapping.getExpirationDate());
         urlMappingDTO.setClickLimit(urlMapping.getClickLimit());
+        urlMappingDTO.setOneTime(urlMapping.isOneTime());
+        urlMappingDTO.setPasswordProtected(urlMapping.getPassword() != null && !urlMapping.getPassword().isEmpty());
         urlMappingDTO.setUsername(urlMapping.getUser().getUsername());
         return urlMappingDTO;
     }
@@ -155,6 +167,9 @@ public class UrlMappingService {
             if (urlMapping.getClickLimit() != null && urlMapping.getClickCount() >= urlMapping.getClickLimit()) {
                 throw new IllegalStateException("This link has reached its click limit");
             }
+            if (urlMapping.isOneTime() && urlMapping.getClickCount() >= 1) {
+                throw new IllegalStateException("This one-time link has already been visited");
+            }
 
             urlMapping.setClickCount(urlMapping.getClickCount() + 1);
             urlMappingRepository.save(urlMapping);
@@ -173,6 +188,53 @@ public class UrlMappingService {
         }
 
         return urlMapping;
+    }
+
+    public UrlMapping getUrlMapping(String shortUrl) {
+        return urlMappingRepository.findByShortUrl(shortUrl);
+    }
+
+    public String verifyAndPasswordRedirect(String shortUrl, String password, String referrer, String userAgent) {
+        UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
+        if (urlMapping == null) {
+            throw new IllegalArgumentException("Short URL not found");
+        }
+
+        if (urlMapping.getPassword() == null || urlMapping.getPassword().isEmpty()) {
+            throw new IllegalArgumentException("This link is not password protected");
+        }
+
+        if (password == null || !passwordEncoder.matches(password.trim(), urlMapping.getPassword())) {
+            throw new IllegalArgumentException("Incorrect password");
+        }
+
+        if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now())) {
+            throw new IllegalStateException("This link has expired");
+        }
+
+        if (urlMapping.getClickLimit() != null && urlMapping.getClickCount() >= urlMapping.getClickLimit()) {
+            throw new IllegalStateException("This link has reached its click limit");
+        }
+
+        if (urlMapping.isOneTime() && urlMapping.getClickCount() >= 1) {
+            throw new IllegalStateException("This one-time link has already been visited");
+        }
+
+        urlMapping.setClickCount(urlMapping.getClickCount() + 1);
+        urlMappingRepository.save(urlMapping);
+
+        // Record Click Event
+        ClickEvent clickEvent = new ClickEvent();
+        clickEvent.setClickDate(LocalDateTime.now());
+        clickEvent.setUrlMapping(urlMapping);
+        clickEvent.setReferrer(referrer != null && !referrer.trim().isEmpty() ? referrer : "Direct");
+        clickEvent.setUserAgent(userAgent);
+        clickEvent.setBrowser(parseBrowser(userAgent));
+        clickEvent.setOperatingSystem(parseOS(userAgent));
+        clickEvent.setDeviceType(parseDeviceType(userAgent));
+        clickEventRepository.save(clickEvent);
+
+        return urlMapping.getOriginalUrl();
     }
 
     private String parseBrowser(String ua) {

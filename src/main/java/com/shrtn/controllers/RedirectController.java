@@ -26,12 +26,27 @@ public class RedirectController {
     @GetMapping("/{shortUrl}")
     public ResponseEntity<Void> redirect(@PathVariable String shortUrl, HttpServletRequest request){
         try {
+            UrlMapping urlMapping = urlMappingService.getUrlMapping(shortUrl);
+            if (urlMapping == null) {
+                HttpHeaders httpHeaders = new HttpHeaders();
+                String errorUrl = frontendUrl + "/error?message=" + UriUtils.encode("This short link does not exist or has been deleted", StandardCharsets.UTF_8);
+                httpHeaders.add("Location", errorUrl);
+                return ResponseEntity.status(302).headers(httpHeaders).build();
+            }
+
+            if (urlMapping.getPassword() != null && !urlMapping.getPassword().isEmpty()) {
+                HttpHeaders httpHeaders = new HttpHeaders();
+                String pwdRequiredUrl = frontendUrl + "/s/" + shortUrl + "?passwordRequired=true";
+                httpHeaders.add("Location", pwdRequiredUrl);
+                return ResponseEntity.status(302).headers(httpHeaders).build();
+            }
+
             String referrer = request.getHeader("Referer");
             String userAgent = request.getHeader("User-Agent");
-            UrlMapping urlMapping = urlMappingService.getOriginalUrl(shortUrl, referrer, userAgent);
-            if(urlMapping!=null){
+            UrlMapping mapping = urlMappingService.getOriginalUrl(shortUrl, referrer, userAgent);
+            if(mapping!=null){
                 HttpHeaders httpHeaders = new HttpHeaders();
-                httpHeaders.add("Location", urlMapping.getOriginalUrl());
+                httpHeaders.add("Location", mapping.getOriginalUrl());
                 return ResponseEntity.status(302).headers(httpHeaders).build();
             }else{
                 HttpHeaders httpHeaders = new HttpHeaders();

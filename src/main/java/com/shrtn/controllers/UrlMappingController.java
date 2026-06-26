@@ -28,13 +28,22 @@ public class UrlMappingController {
 
     @PostMapping("/shorten")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<?> createShortUrl(@RequestBody Map<String,String> request, Principal principal){
+    public ResponseEntity<?> createShortUrl(@RequestBody Map<String,Object> request, Principal principal){
 
         try {
-            String originalUrl = request.get("originalUrl");
-            String customSlug = request.get("customSlug");
-            String expDateStr = request.get("expirationDate");
-            String clickLimitStr = request.get("clickLimit");
+            String originalUrl = (String) request.get("originalUrl");
+            String customSlug = (String) request.get("customSlug");
+            String expDateStr = (String) request.get("expirationDate");
+            String clickLimitStr = (String) request.get("clickLimit");
+            String password = (String) request.get("password");
+            
+            boolean oneTime = false;
+            Object oneTimeVal = request.get("oneTime");
+            if (oneTimeVal instanceof Boolean) {
+                oneTime = (Boolean) oneTimeVal;
+            } else if (oneTimeVal instanceof String) {
+                oneTime = Boolean.parseBoolean((String) oneTimeVal);
+            }
 
             LocalDateTime expirationDate = null;
             if (expDateStr != null && !expDateStr.trim().isEmpty()) {
@@ -47,12 +56,26 @@ public class UrlMappingController {
             }
 
             User user = userService.findByEmail(principal.getName());
-            UrlMappingDTO urlMappingDTO = urlMappingService.createShortUrl(originalUrl, customSlug, expirationDate, clickLimit, user);
+            UrlMappingDTO urlMappingDTO = urlMappingService.createShortUrl(originalUrl, customSlug, expirationDate, clickLimit, password, oneTime, user);
             return ResponseEntity.ok(urlMappingDTO);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
 
+    }
+
+    @PostMapping("/verify-password/{shortUrl}")
+    public ResponseEntity<?> verifyPassword(@PathVariable String shortUrl, @RequestBody Map<String, String> request, jakarta.servlet.http.HttpServletRequest httpRequest) {
+        try {
+            String password = request.get("password");
+            String referrer = httpRequest.getHeader("Referer");
+            String userAgent = httpRequest.getHeader("User-Agent");
+            
+            String originalUrl = urlMappingService.verifyAndPasswordRedirect(shortUrl, password, referrer, userAgent);
+            return ResponseEntity.ok(Map.of("originalUrl", originalUrl));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
     }
 
 

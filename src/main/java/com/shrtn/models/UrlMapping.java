@@ -20,6 +20,8 @@ public class UrlMapping{
     private LocalDateTime createdDate;
     private LocalDateTime expirationDate;
     private Integer clickLimit;
+    private String password;
+    private boolean oneTime = false;
 
     @ManyToOne
     @JoinColumn(name = "user_id")

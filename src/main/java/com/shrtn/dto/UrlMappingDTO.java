@@ -14,6 +14,8 @@ public class UrlMappingDTO {
     private LocalDateTime createdDate;
     private LocalDateTime expirationDate;
     private Integer clickLimit;
+    private boolean oneTime;
+    private boolean isPasswordProtected;
     private String username;
 
 }
