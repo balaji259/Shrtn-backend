@@ -78,6 +78,31 @@ public class UrlMappingController {
         }
     }
 
+    @GetMapping("/resolve/{shortUrl}")
+    public ResponseEntity<?> resolveUrl(@PathVariable String shortUrl, jakarta.servlet.http.HttpServletRequest httpRequest) {
+        try {
+            com.shrtn.models.UrlMapping urlMapping = urlMappingService.getUrlMapping(shortUrl);
+            if (urlMapping == null) {
+                return ResponseEntity.status(404).body(Map.of("message", "This short link does not exist or has been deleted"));
+            }
+
+            if (urlMapping.getPassword() != null && !urlMapping.getPassword().isEmpty()) {
+                return ResponseEntity.ok(Map.of("passwordRequired", true));
+            }
+
+            String referrer = httpRequest.getHeader("Referer");
+            String userAgent = httpRequest.getHeader("User-Agent");
+            com.shrtn.models.UrlMapping mapping = urlMappingService.getOriginalUrl(shortUrl, referrer, userAgent);
+            if (mapping != null) {
+                return ResponseEntity.ok(Map.of("passwordRequired", false, "originalUrl", mapping.getOriginalUrl()));
+            } else {
+                return ResponseEntity.status(404).body(Map.of("message", "This short link does not exist or has been deleted"));
+            }
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
 
     @GetMapping("/myurls")
     @PreAuthorize("hasRole('USER')")

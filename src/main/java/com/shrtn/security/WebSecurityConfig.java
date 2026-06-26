@@ -59,7 +59,7 @@ public class WebSecurityConfig {
                 .cors(withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/","/api/auth/**").permitAll()
+                        .requestMatchers("/","/api/auth/**", "/api/urls/resolve/**", "/api/urls/verify-password/**").permitAll()
                         .requestMatchers("/api/urls/**").authenticated()
                         .requestMatchers("/{shorturl}").permitAll()
                         .anyRequest().authenticated()
