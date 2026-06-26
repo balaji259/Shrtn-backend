@@ -13,6 +13,11 @@ public class ClickEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private LocalDateTime clickDate;
+    private String referrer;
+    private String userAgent;
+    private String browser;
+    private String operatingSystem;
+    private String deviceType;
 
     @ManyToOne
     @JoinColumn(name = "url_mapping_id")

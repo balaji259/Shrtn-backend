@@ -90,9 +90,9 @@
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
-			<groupId>io.github.cdimascio</groupId>
-			<artifactId>dotenv-java</artifactId>
-			<version>2.2.4</version>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>springboot3-dotenv</artifactId>
+			<version>5.1.0</version>
 		</dependency>
 
 	</dependencies>

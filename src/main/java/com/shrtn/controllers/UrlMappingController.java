@@ -28,16 +28,30 @@ public class UrlMappingController {
 
     @PostMapping("/shorten")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<UrlMappingDTO> createShortUrl(@RequestBody Map<String,String> request, Principal principal){
+    public ResponseEntity<?> createShortUrl(@RequestBody Map<String,String> request, Principal principal){
 
-        String originalUrl = request.get("originalUrl");
-        System.out.println(originalUrl);
-        User user = userService.findByEmail(principal.getName());
-        System.out.println("User ->");
-        System.out.println(user);
-        UrlMappingDTO urlMappingDTO = urlMappingService.createShortUrl(originalUrl, user);
-        return ResponseEntity.ok(urlMappingDTO);
+        try {
+            String originalUrl = request.get("originalUrl");
+            String customSlug = request.get("customSlug");
+            String expDateStr = request.get("expirationDate");
+            String clickLimitStr = request.get("clickLimit");
 
+            LocalDateTime expirationDate = null;
+            if (expDateStr != null && !expDateStr.trim().isEmpty()) {
+                expirationDate = LocalDateTime.parse(expDateStr);
+            }
+
+            Integer clickLimit = null;
+            if (clickLimitStr != null && !clickLimitStr.trim().isEmpty()) {
+                clickLimit = Integer.parseInt(clickLimitStr);
+            }
+
+            User user = userService.findByEmail(principal.getName());
+            UrlMappingDTO urlMappingDTO = urlMappingService.createShortUrl(originalUrl, customSlug, expirationDate, clickLimit, user);
+            return ResponseEntity.ok(urlMappingDTO);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
 
     }
 
@@ -52,13 +66,13 @@ public class UrlMappingController {
 
     @GetMapping("/analytics/{shortUrl}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<List<ClickEventDTO>> getUrlAnalytics(@PathVariable String shortUrl, @RequestParam("startDate") String startDate, @RequestParam("endDate") String endDate){
+    public ResponseEntity<?> getUrlAnalytics(@PathVariable String shortUrl, @RequestParam("startDate") String startDate, @RequestParam("endDate") String endDate){
 
         DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
         LocalDateTime start = LocalDateTime.parse(startDate, formatter);
         LocalDateTime end = LocalDateTime.parse(endDate, formatter);
-        List<ClickEventDTO> clickEventDTOS = urlMappingService.getClickEventsByDate(shortUrl,start,end);
-        return ResponseEntity.ok(clickEventDTOS);
+        Map<String, Object> analytics = urlMappingService.getUrlAnalyticsAndMetadata(shortUrl,start,end);
+        return ResponseEntity.ok(analytics);
 
     }
 

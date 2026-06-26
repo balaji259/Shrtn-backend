@@ -24,13 +24,28 @@ public class UrlMappingService {
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
 
-    public UrlMappingDTO createShortUrl(String originalUrl, User user){
-        String shortUrl = generateShortUrl();
+    public UrlMappingDTO createShortUrl(String originalUrl, String customSlug, LocalDateTime expirationDate, Integer clickLimit, User user){
+        String shortUrl;
+        if (customSlug != null && !customSlug.trim().isEmpty()) {
+            customSlug = customSlug.trim();
+            if (!customSlug.matches("^[a-zA-Z0-9\\-_]+$")) {
+                throw new IllegalArgumentException("Custom slug must only contain letters, numbers, hyphens, and underscores");
+            }
+            if (urlMappingRepository.findByShortUrl(customSlug) != null) {
+                throw new IllegalArgumentException("Custom slug is already in use");
+            }
+            shortUrl = customSlug;
+        } else {
+            shortUrl = generateUniqueShortUrl();
+        }
+
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setOriginalUrl(originalUrl);
         urlMapping.setShortUrl(shortUrl);
         urlMapping.setUser(user);
         urlMapping.setCreatedDate(LocalDateTime.now());
+        urlMapping.setExpirationDate(expirationDate);
+        urlMapping.setClickLimit(clickLimit);
 
         UrlMapping savedUrlMapping = urlMappingRepository.save(urlMapping);
 
@@ -45,11 +60,19 @@ public class UrlMappingService {
         urlMappingDTO.setShortUrl(urlMapping.getShortUrl());
         urlMappingDTO.setClickCount(urlMapping.getClickCount());
         urlMappingDTO.setCreatedDate(urlMapping.getCreatedDate());
+        urlMappingDTO.setExpirationDate(urlMapping.getExpirationDate());
+        urlMappingDTO.setClickLimit(urlMapping.getClickLimit());
         urlMappingDTO.setUsername(urlMapping.getUser().getUsername());
         return urlMappingDTO;
     }
 
-
+    private String generateUniqueShortUrl() {
+        String shortUrl;
+        do {
+            shortUrl = generateShortUrl();
+        } while (urlMappingRepository.findByShortUrl(shortUrl) != null);
+        return shortUrl;
+    }
 
     private String generateShortUrl() {
         String Characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -69,11 +92,13 @@ public class UrlMappingService {
 
     }
 
-    public List<ClickEventDTO> getClickEventsByDate(String shortUrl, LocalDateTime start, LocalDateTime end) {
+    public Map<String, Object> getUrlAnalyticsAndMetadata(String shortUrl, LocalDateTime start, LocalDateTime end) {
 
         UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
         if(urlMapping != null){
-            return clickEventRepository.findByUrlMappingAndClickDateBetween(urlMapping,start,end).stream()
+            List<ClickEvent> clickEvents = clickEventRepository.findByUrlMappingAndClickDateBetween(urlMapping,start,end);
+
+            List<ClickEventDTO> clickDateCounts = clickEvents.stream()
                     .collect(Collectors.groupingBy(click -> click.getClickDate().toLocalDate(), Collectors.counting()))
                     .entrySet().stream()
                     .map(entry -> {
@@ -83,6 +108,26 @@ public class UrlMappingService {
                         return clickEventDTO;
                     })
                     .collect(Collectors.toList());
+
+            Map<String, Long> referrerCounts = clickEvents.stream()
+                    .collect(Collectors.groupingBy(click -> click.getReferrer() != null ? click.getReferrer() : "Direct", Collectors.counting()));
+
+            Map<String, Long> browserCounts = clickEvents.stream()
+                    .collect(Collectors.groupingBy(click -> click.getBrowser() != null ? click.getBrowser() : "Unknown", Collectors.counting()));
+
+            Map<String, Long> osCounts = clickEvents.stream()
+                    .collect(Collectors.groupingBy(click -> click.getOperatingSystem() != null ? click.getOperatingSystem() : "Unknown", Collectors.counting()));
+
+            Map<String, Long> deviceCounts = clickEvents.stream()
+                    .collect(Collectors.groupingBy(click -> click.getDeviceType() != null ? click.getDeviceType() : "Desktop", Collectors.counting()));
+
+            return Map.of(
+                "clickEvents", clickDateCounts,
+                "referrer", referrerCounts,
+                "browser", browserCounts,
+                "os", osCounts,
+                "device", deviceCounts
+            );
         }
         return null;
 
@@ -99,11 +144,18 @@ public class UrlMappingService {
 
     }
 
-    public UrlMapping getOriginalUrl(String shortUrl) {
+    public UrlMapping getOriginalUrl(String shortUrl, String referrer, String userAgent) {
 
         UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
 
         if(urlMapping != null){
+            if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now())) {
+                throw new IllegalStateException("This link has expired");
+            }
+            if (urlMapping.getClickLimit() != null && urlMapping.getClickCount() >= urlMapping.getClickLimit()) {
+                throw new IllegalStateException("This link has reached its click limit");
+            }
+
             urlMapping.setClickCount(urlMapping.getClickCount() + 1);
             urlMappingRepository.save(urlMapping);
 
@@ -111,10 +163,46 @@ public class UrlMappingService {
             ClickEvent clickEvent = new ClickEvent();
             clickEvent.setClickDate(LocalDateTime.now());
             clickEvent.setUrlMapping(urlMapping);
+            clickEvent.setReferrer(referrer != null && !referrer.trim().isEmpty() ? referrer : "Direct");
+            clickEvent.setUserAgent(userAgent);
+            clickEvent.setBrowser(parseBrowser(userAgent));
+            clickEvent.setOperatingSystem(parseOS(userAgent));
+            clickEvent.setDeviceType(parseDeviceType(userAgent));
             clickEventRepository.save(clickEvent);
 
         }
 
         return urlMapping;
+    }
+
+    private String parseBrowser(String ua) {
+        if (ua == null) return "Unknown";
+        String lower = ua.toLowerCase();
+        if (lower.contains("edg")) return "Edge";
+        if (lower.contains("opr") || lower.contains("opera")) return "Opera";
+        if (lower.contains("chrome") && !lower.contains("chromium")) return "Chrome";
+        if (lower.contains("safari") && lower.contains("chrome")) return "Chrome";
+        if (lower.contains("safari")) return "Safari";
+        if (lower.contains("firefox")) return "Firefox";
+        return "Other";
+    }
+
+    private String parseOS(String ua) {
+        if (ua == null) return "Unknown";
+        String lower = ua.toLowerCase();
+        if (lower.contains("windows")) return "Windows";
+        if (lower.contains("macintosh") || lower.contains("mac os x")) return "macOS";
+        if (lower.contains("android")) return "Android";
+        if (lower.contains("iphone") || lower.contains("ipad")) return "iOS";
+        if (lower.contains("linux")) return "Linux";
+        return "Other";
+    }
+
+    private String parseDeviceType(String ua) {
+        if (ua == null) return "Desktop";
+        String lower = ua.toLowerCase();
+        if (lower.contains("ipad") || (lower.contains("macintosh") && lower.contains("touch"))) return "Tablet";
+        if (lower.contains("mobi") || lower.contains("iphone") || lower.contains("android")) return "Mobile";
+        return "Desktop";
     }
 }
