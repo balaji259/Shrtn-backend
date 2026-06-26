@@ -23,13 +23,9 @@ public class UrlMappingService {
 
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
-    private UrlSecurityService urlSecurityService;
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     public UrlMappingDTO createShortUrl(String originalUrl, String customSlug, LocalDateTime expirationDate, Integer clickLimit, String password, boolean oneTime, User user){
-        if (!urlSecurityService.isSafeUrl(originalUrl)) {
-            throw new IllegalArgumentException("The target URL has been flagged as suspicious or malicious");
-        }
 
         String shortUrl;
         if (customSlug != null && !customSlug.trim().isEmpty()) {
@@ -148,6 +144,9 @@ public class UrlMappingService {
     public Map<LocalDate, Long> getTotalClicksByUserAndDate(User user, LocalDate start, LocalDate end) {
 
         List<UrlMapping> urlMappings = urlMappingRepository.findByUser(user);
+        if (urlMappings.isEmpty()) {
+            return Map.of();
+        }
         List<ClickEvent> clickEvents = clickEventRepository.findByUrlMappingInAndClickDateBetween(urlMappings, start.atStartOfDay(), end.plusDays(1).atStartOfDay());
 
         return clickEvents.stream()

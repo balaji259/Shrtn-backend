@@ -21,7 +21,11 @@ public class UrlMapping{
     private LocalDateTime expirationDate;
     private Integer clickLimit;
     private String password;
-    private boolean oneTime = false;
+    private Boolean oneTime = false;
+
+    public boolean isOneTime() {
+        return oneTime != null && oneTime;
+    }
 
     @ManyToOne
     @JoinColumn(name = "user_id")
