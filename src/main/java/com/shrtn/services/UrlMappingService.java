@@ -45,7 +45,7 @@ public class UrlMappingService {
         urlMapping.setOriginalUrl(originalUrl);
         urlMapping.setShortUrl(shortUrl);
         urlMapping.setUser(user);
-        urlMapping.setCreatedDate(LocalDateTime.now());
+        urlMapping.setCreatedDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
         urlMapping.setExpirationDate(expirationDate);
         urlMapping.setClickLimit(clickLimit);
         urlMapping.setOneTime(oneTime);
@@ -94,7 +94,7 @@ public class UrlMappingService {
 
     public List<UrlMappingDTO> getUrlsByUser(User user) {
 
-        return urlMappingRepository.findByUser(user).stream()
+        return urlMappingRepository.findByUserOrderByCreatedDateDesc(user).stream()
                 .map(this::convertToDTO)
                 .toList();
 
@@ -160,7 +160,7 @@ public class UrlMappingService {
         UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
 
         if(urlMapping != null){
-            if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now())) {
+            if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now(java.time.ZoneOffset.UTC))) {
                 throw new IllegalStateException("This link has expired");
             }
             if (urlMapping.getClickLimit() != null && urlMapping.getClickCount() >= urlMapping.getClickLimit()) {
@@ -175,7 +175,7 @@ public class UrlMappingService {
 
             //Record Click Event
             ClickEvent clickEvent = new ClickEvent();
-            clickEvent.setClickDate(LocalDateTime.now());
+            clickEvent.setClickDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
             clickEvent.setUrlMapping(urlMapping);
             clickEvent.setReferrer(referrer != null && !referrer.trim().isEmpty() ? referrer : "Direct");
             clickEvent.setUserAgent(userAgent);
@@ -207,7 +207,7 @@ public class UrlMappingService {
             throw new IllegalArgumentException("Incorrect password");
         }
 
-        if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now())) {
+        if (urlMapping.getExpirationDate() != null && urlMapping.getExpirationDate().isBefore(LocalDateTime.now(java.time.ZoneOffset.UTC))) {
             throw new IllegalStateException("This link has expired");
         }
 
@@ -224,7 +224,7 @@ public class UrlMappingService {
 
         // Record Click Event
         ClickEvent clickEvent = new ClickEvent();
-        clickEvent.setClickDate(LocalDateTime.now());
+        clickEvent.setClickDate(LocalDateTime.now(java.time.ZoneOffset.UTC));
         clickEvent.setUrlMapping(urlMapping);
         clickEvent.setReferrer(referrer != null && !referrer.trim().isEmpty() ? referrer : "Direct");
         clickEvent.setUserAgent(userAgent);
@@ -265,5 +265,14 @@ public class UrlMappingService {
         if (lower.contains("ipad") || (lower.contains("macintosh") && lower.contains("touch"))) return "Tablet";
         if (lower.contains("mobi") || lower.contains("iphone") || lower.contains("android")) return "Mobile";
         return "Desktop";
+    }
+
+    public void deleteShortUrl(Long id, User user) {
+        UrlMapping urlMapping = urlMappingRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Short URL not found"));
+        if (!urlMapping.getUser().getId().equals(user.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("You are not authorized to delete this URL");
+        }
+        urlMappingRepository.delete(urlMapping);
     }
 }

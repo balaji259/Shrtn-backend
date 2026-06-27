@@ -47,7 +47,7 @@ public class UrlMappingController {
 
             LocalDateTime expirationDate = null;
             if (expDateStr != null && !expDateStr.trim().isEmpty()) {
-                expirationDate = LocalDateTime.parse(expDateStr);
+                expirationDate = LocalDateTime.ofInstant(java.time.Instant.parse(expDateStr), java.time.ZoneOffset.UTC);
             }
 
             Integer clickLimit = null;
@@ -137,7 +137,15 @@ public class UrlMappingController {
 
     }
 
-
-
-
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> deleteShortUrl(@PathVariable Long id, Principal principal) {
+        try {
+            User user = userService.findByEmail(principal.getName());
+            urlMappingService.deleteShortUrl(id, user);
+            return ResponseEntity.ok(Map.of("message", "Short URL deleted successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
 }
