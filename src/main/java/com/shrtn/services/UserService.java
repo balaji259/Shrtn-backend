@@ -47,6 +47,38 @@ public class UserService {
         return new JwtAuthenticationResponse(jwt);
     }
 
+    public JwtAuthenticationResponse loginUserWithGoogle(String email, String name) {
+        User user;
+        if (userRepository.existsByEmail(email)) {
+            user = userRepository.findByEmail(email).get();
+        } else {
+            // Create a new user (signup)
+            user = new User();
+            user.setEmail(email);
+            // generate a unique username
+            String baseUsername = name != null && !name.trim().isEmpty() ? name.replaceAll("\\s+", "").toLowerCase() : email.split("@")[0];
+            String username = baseUsername;
+            int counter = 1;
+            while (userRepository.existsByUsername(username)) {
+                username = baseUsername + counter;
+                counter++;
+            }
+            user.setUsername(username);
+            user.setRole("ROLE_USER");
+            // Set a random secure password for OAuth user
+            user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            user = userRepository.save(user);
+        }
+
+        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities());
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        String jwt = jwtUtils.generateToken(userDetails);
+        return new JwtAuthenticationResponse(jwt);
+    }
+
     public User findByUsername(String name){
         return userRepository.findByUsername(name).orElseThrow(
                 () -> new UsernameNotFoundException("User not found with username: "+name)
@@ -59,3 +91,4 @@ public class UserService {
         );
     }
 }
+
